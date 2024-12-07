@@ -15,6 +15,27 @@ void free_csv(char ***data, int rows, int cols);
 void hsv_to_rgb(int h, int s, int v, int *r, int *g, int *b);
 int find_class_column(char ***data, int cols);
 int list_csv_files(const char *folder, char files[][256], int max_files);
+double **calculate_min_max(char ***data, int rows, int cols, int class_col);
+void normalize_data(char ***data, int rows, int cols, int class_col);
+
+double **calculate_min_max(char ***data, int rows, int cols, int class_col) {
+    double **min_max = (double **)malloc(cols * sizeof(double *));
+    for (int j = 0; j < cols; j++) {
+        min_max[j] = (double *)malloc(2 * sizeof(double)); // [min, max]
+        if (j == class_col) {
+            min_max[j][0] = min_max[j][1] = NAN; // Skip class column
+        } else {
+            min_max[j][0] = INFINITY;
+            min_max[j][1] = -INFINITY;
+            for (int i = 1; i < rows; i++) { // Skip header row
+                double value = atof(data[i][j]);
+                if (value < min_max[j][0]) min_max[j][0] = value;
+                if (value > min_max[j][1]) min_max[j][1] = value;
+            }
+        }
+    }
+    return min_max;
+}
 
 // Function to list all CSV files in the "data" folder
 int list_csv_files(const char *folder, char files[][256], int max_files) {
@@ -186,7 +207,7 @@ void display_heatmap(char ***data, int rows, int cols) {
     char **classes = malloc(rows * sizeof(char *));
     int class_count = 0;
 
-    // print header for all columns
+    // Print header for all columns
     for (int j = 0; j < cols; j++) {
         printf("%-*s ", col_widths[j] + 1, data[0][j]);
     }
@@ -220,9 +241,9 @@ void display_heatmap(char ***data, int rows, int cols) {
     // Iterate over the rows and columns
     for (int i = 1; i < rows; i++) { // Skip the header row
         for (int j = 0; j < cols; j++) {
-            if (j == class_col) continue; // Skip the class column for now
+            if (j == class_col) continue; // Skip the class column
             double value = atof(data[i][j]); // Convert to a numeric value
-            int intensity = (int)(value * 255 / 10); // Scale to 0-255 (assuming max value ~10)
+            int intensity = (int)(value * 255); // Map normalized [0, 1] to intensity [0, 255]
             intensity = intensity > 255 ? 255 : (intensity < 0 ? 0 : intensity);
 
             // Use ANSI escape codes for color and align dynamically
@@ -284,6 +305,58 @@ void display_csv(char ***data, int rows, int cols) {
     free(col_widths);
 }
 
+void normalize_data(char ***data, int rows, int cols, int class_col) {
+    double **min_max = calculate_min_max(data, rows, cols, class_col);
+    if (!min_max) {
+        printf("Error: Unable to calculate min/max for normalization.\n");
+        return;
+    }
+
+    char temp[32]; // Temporary buffer for normalized values
+    for (int j = 0; j < cols; j++) {
+        if (j == class_col) continue; // Skip class column
+
+        for (int i = 1; i < rows; i++) { // Skip the header row
+            if (!data[i][j] || strlen(data[i][j]) == 0) continue;
+
+            double value = atof(data[i][j]);
+            if (isnan(value)) {
+                printf("Warning: Non-numeric value in column %d, row %d. Skipping normalization.\n", j, i);
+                continue;
+            }
+
+            if (min_max[j][0] != min_max[j][1]) {
+                double normalized = (value - min_max[j][0]) / (min_max[j][1] - min_max[j][0]);
+                snprintf(temp, sizeof(temp), "%.6f", normalized);
+
+                // Safely reallocate memory for normalized value
+                free(data[i][j]); // Free old value
+                data[i][j] = strdup(temp); // Allocate new value
+                if (!data[i][j]) {
+                    printf("Error: Memory allocation failed for normalized value.\n");
+                    break;
+                }
+            } else {
+                // Handle case where min == max
+                free(data[i][j]);
+                data[i][j] = strdup("0.000000");
+                if (!data[i][j]) {
+                    printf("Error: Memory allocation failed for zero value.\n");
+                    break;
+                }
+            }
+        }
+    }
+
+    // Free min/max memory
+    for (int j = 0; j < cols; j++) {
+        free(min_max[j]);
+    }
+    free(min_max);
+
+    printf("Data normalization completed.\n");
+}
+
 // Main function
 int main() {
     char folder[] = "data"; // Directory containing CSV files
@@ -291,6 +364,8 @@ int main() {
     char filepath[300];     // Path to the currently loaded file
     int rows = 0, cols = 0;
     char ***data = NULL;
+    int normalize = 0; // Flag to track normalization mode (0 = OFF, 1 = ON)
+    int class_col = -1; // Store class column index
 
     // Load available CSV files
     int file_count = list_csv_files(folder, files, 100);
@@ -328,6 +403,12 @@ int main() {
             }
 
             printf("File '%s' successfully loaded.\n", files[choice - 1]);
+
+            // Find class column
+            class_col = find_class_column(data, cols);
+            if (class_col == -1) {
+                printf("Warning: 'class' column not found. Proceeding without class-specific logic.\n");
+            }
         }
 
         // Display menu options
@@ -335,37 +416,56 @@ int main() {
         printf("'d': Display Data\n");
         printf("'h': Heatmap View\n");
         printf("'r': Reload Data\n");
+        printf("'n': Toggle Normalization (%s)\n", normalize ? "ON" : "OFF");
         printf("'q': Quit\n");
         printf("Enter your choice: ");
         scanf(" %c", &option);
 
         switch (tolower(option)) {
-            case 'd':
+            case 'd': {
                 display_csv(data, rows, cols);
                 break;
-            case 'h':
+            }
+            case 'h': {
                 display_heatmap(data, rows, cols);
                 break;
-            case 'r':
-                free_csv(data, rows, cols); // Free the previously loaded data
-                data = NULL;               // Reset data pointer
-                rows = 0;
-                cols = 0;
+            }
+            case 'r': {
+                free_csv(data, rows, cols);
+                data = NULL;
+                rows = cols = 0;
+                normalize = 0; // Reset normalization flag
                 printf("Reloading data...\n");
                 break;
-            case 'q':
+            }
+            case 'n': {
+                if (!data) {
+                    printf("No data loaded to normalize.\n");
+                    break;
+                }
+
+                normalize = !normalize; // Toggle normalization mode
+                if (normalize) {
+                    printf("Normalizing data...\n");
+                    normalize_data(data, rows, cols, class_col);
+                } else {
+                    printf("Normalization toggled OFF. Reload data to restore original values.\n");
+                }
+                break;
+            }
+            case 'q': {
                 printf("Exiting...\n");
                 break;
-            default:
+            }
+            default: {
                 printf("Invalid option. Try again.\n");
                 break;
+            }
         }
     } while (tolower(option) != 'q');
 
     // Free memory if data is loaded
-    if (data != NULL) {
-        free_csv(data, rows, cols);
-    }
+    if (data != NULL) free_csv(data, rows, cols);
 
     return 0;
 }
