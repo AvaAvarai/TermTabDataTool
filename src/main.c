@@ -197,53 +197,80 @@ void display_heatmap(char ***data, int rows, int cols) {
 
     // Find the 'class' column index
     int class_col = find_class_column(data, cols);
-    if (class_col == -1) {
-        printf("Error: 'class' column not found.\n");
-        free(col_widths);
-        return;
+    int has_class = class_col != -1; // Check if the class column exists
+
+    // Compute min and max for all columns (excluding class column)
+    double *col_min = (double *)malloc(cols * sizeof(double));
+    double *col_max = (double *)malloc(cols * sizeof(double));
+    for (int j = 0; j < cols; j++) {
+        if (j == class_col) {
+            col_min[j] = col_max[j] = NAN; // Skip class column
+        } else {
+            col_min[j] = INFINITY;
+            col_max[j] = -INFINITY;
+            for (int i = 1; i < rows; i++) { // Skip header
+                double value = atof(data[i][j]);
+                if (value < col_min[j]) col_min[j] = value;
+                if (value > col_max[j]) col_max[j] = value;
+            }
+        }
     }
 
     // Map unique class values to colors
-    char **classes = malloc(rows * sizeof(char *));
+    char **classes = has_class ? malloc(rows * sizeof(char *)) : NULL;
     int class_count = 0;
 
     // Print header for all columns
     for (int j = 0; j < cols; j++) {
+        if (j == class_col) continue; // Skip class column if present
         printf("%-*s ", col_widths[j] + 1, data[0][j]);
+    }
+    if (has_class) { // Print the class header if it exists
+        printf("%-*s ", col_widths[class_col] + 1, data[0][class_col]);
     }
     printf("\n");
 
-    for (int i = 1; i < rows; i++) { // Start at 1 to skip header
-        int found = 0;
-        for (int j = 0; j < class_count; j++) {
-            if (strcasecmp(classes[j], data[i][class_col]) == 0) {
-                found = 1;
-                break;
+    // Process unique class values only if class column exists
+    if (has_class) {
+        for (int i = 1; i < rows; i++) { // Start at 1 to skip header
+            int found = 0;
+            for (int j = 0; j < class_count; j++) {
+                if (strcasecmp(classes[j], data[i][class_col]) == 0) {
+                    found = 1;
+                    break;
+                }
             }
-        }
-        if (!found) {
-            classes[class_count] = data[i][class_col];
-            class_count++;
+            if (!found) {
+                classes[class_count] = data[i][class_col];
+                class_count++;
+            }
         }
     }
 
     // Dynamically allocate memory for class_colors
-    int **class_colors = (int **)malloc(class_count * sizeof(int *));
-    for (int i = 0; i < class_count; i++) {
-        class_colors[i] = (int *)malloc(3 * sizeof(int));
-    }
+    int **class_colors = NULL;
+    if (has_class) {
+        class_colors = (int **)malloc(class_count * sizeof(int *));
+        for (int i = 0; i < class_count; i++) {
+            class_colors[i] = (int *)malloc(3 * sizeof(int));
+        }
 
-    // Assign HSV colors to each class
-    for (int i = 0; i < class_count; i++) {
-        hsv_to_rgb((i * 360 / class_count), 100, 100, &class_colors[i][0], &class_colors[i][1], &class_colors[i][2]);
+        // Assign HSV colors to each class
+        for (int i = 0; i < class_count; i++) {
+            hsv_to_rgb((i * 360 / class_count), 100, 100, &class_colors[i][0], &class_colors[i][1], &class_colors[i][2]);
+        }
     }
 
     // Iterate over the rows and columns
     for (int i = 1; i < rows; i++) { // Skip the header row
         for (int j = 0; j < cols; j++) {
-            if (j == class_col) continue; // Skip the class column
+            if (j == class_col) continue; // Skip class column
+
             double value = atof(data[i][j]); // Convert to a numeric value
-            int intensity = (int)(value * 255); // Map normalized [0, 1] to intensity [0, 255]
+            int intensity = 0;
+            if (col_min[j] != col_max[j]) { // Avoid division by zero
+                intensity = (int)((value - col_min[j]) / (col_max[j] - col_min[j]) * 255);
+            }
             intensity = intensity > 255 ? 255 : (intensity < 0 ? 0 : intensity);
 
             // Use ANSI escape codes for color and align dynamically
@@ -251,23 +278,29 @@ void display_heatmap(char ***data, int rows, int cols) {
                    intensity, 0, 255 - intensity, col_widths[j], data[i][j]);
         }
 
-        // Display class with color
-        for (int j = 0; j < class_count; j++) {
-            if (strcasecmp(classes[j], data[i][class_col]) == 0) {
-                printf("\033[38;2;%d;%d;%dm %-*s \033[0m", 
-                       class_colors[j][0], class_colors[j][1], class_colors[j][2], col_widths[class_col], data[i][class_col]);
-                break;
+        // Display class with color if it exists
+        if (has_class) {
+            for (int j = 0; j < class_count; j++) {
+                if (strcasecmp(classes[j], data[i][class_col]) == 0) {
+                    printf("\033[38;2;%d;%d;%dm %-*s \033[0m", 
+                           class_colors[j][0], class_colors[j][1], class_colors[j][2], col_widths[class_col], data[i][class_col]);
+                    break;
+                }
             }
         }
         printf("\n");
     }
 
-    // Free dynamically allocated memory for class_colors
-    for (int i = 0; i < class_count; i++) {
-        free(class_colors[i]);
+    // Free dynamically allocated memory for class_colors and classes if applicable
+    if (has_class) {
+        for (int i = 0; i < class_count; i++) {
+            free(class_colors[i]);
+        }
+        free(class_colors);
+        free(classes);
     }
-    free(class_colors);
-    free(classes);
+    free(col_min);
+    free(col_max);
     free(col_widths);
 }
 
