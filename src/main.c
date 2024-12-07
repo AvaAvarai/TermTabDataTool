@@ -17,7 +17,63 @@ int find_class_column(char ***data, int cols);
 int list_csv_files(const char *folder, char files[][256], int max_files);
 double **calculate_min_max(char ***data, int rows, int cols, int class_col);
 void normalize_data(char ***data, int rows, int cols, int class_col);
+void print_data_summary(char ***data, int rows, int cols, int class_col);
 
+void print_data_summary(char ***data, int rows, int cols, int class_col) {
+    printf("\n=== Data Summary ===\n");
+
+    // Case count
+    int case_count = rows - 1; // Exclude header
+    printf("Case Count: %d\n", case_count);
+
+    // Class count and names
+    if (class_col != -1) {
+        char **unique_classes = malloc(rows * sizeof(char *));
+        int class_count = 0;
+
+        for (int i = 1; i < rows; i++) { // Start at 1 to skip header
+            int found = 0;
+            for (int j = 0; j < class_count; j++) {
+                if (strcasecmp(data[i][class_col], unique_classes[j]) == 0) {
+                    found = 1;
+                    break;
+                }
+            }
+            if (!found) {
+                unique_classes[class_count] = data[i][class_col];
+                class_count++;
+            }
+        }
+
+        printf("Class Count: %d\n", class_count);
+        printf("Class Names: ");
+        for (int i = 0; i < class_count; i++) {
+            printf("%s", unique_classes[i]);
+            if (i < class_count - 1) printf(", ");
+        }
+        printf("\n");
+
+        free(unique_classes);
+    } else {
+        printf("Class Count: Not Applicable (No Class Column)\n");
+    }
+
+    // Attribute count
+    int attribute_count = (class_col != -1) ? cols - 1 : cols;
+    printf("Attribute Count: %d\n", attribute_count);
+
+    // Attribute names
+    printf("Attribute Names: ");
+    for (int j = 0; j < cols; j++) {
+        if (j == class_col) continue; // Skip class column
+        printf("%s", data[0][j]); // Header row
+        if (j < cols - 1 && !(j == class_col - 1)) printf(", ");
+    }
+    printf("\n");
+    printf("====================\n");
+}
+
+// Function to calculate min and max for each column
 double **calculate_min_max(char ***data, int rows, int cols, int class_col) {
     double **min_max = (double **)malloc(cols * sizeof(double *));
     for (int j = 0; j < cols; j++) {
@@ -435,7 +491,17 @@ int main() {
                 continue;
             }
 
+            // After loading the data
             printf("File '%s' successfully loaded.\n", files[choice - 1]);
+
+            // Find class column
+            class_col = find_class_column(data, cols);
+            if (class_col == -1) {
+                printf("Warning: 'class' column not found. Proceeding without class-specific logic.\n");
+            }
+
+            // Print data summary
+            print_data_summary(data, rows, cols, class_col);
 
             // Find class column
             class_col = find_class_column(data, cols);
