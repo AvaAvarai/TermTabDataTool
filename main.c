@@ -157,8 +157,13 @@ void display_heatmap(char ***data, int rows, int cols) {
         }
     }
 
+    // Dynamically allocate memory for class_colors
+    int **class_colors = (int **)malloc(class_count * sizeof(int *));
+    for (int i = 0; i < class_count; i++) {
+        class_colors[i] = (int *)malloc(3 * sizeof(int));
+    }
+
     // Assign HSV colors to each class
-    int class_colors[class_count][3];
     for (int i = 0; i < class_count; i++) {
         hsv_to_rgb((i * 360 / class_count), 100, 100, &class_colors[i][0], &class_colors[i][1], &class_colors[i][2]);
     }
@@ -186,6 +191,11 @@ void display_heatmap(char ***data, int rows, int cols) {
         printf("\n");
     }
 
+    // Free dynamically allocated memory for class_colors
+    for (int i = 0; i < class_count; i++) {
+        free(class_colors[i]);
+    }
+    free(class_colors);
     free(classes);
     free(col_widths);
 }

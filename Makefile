@@ -26,7 +26,7 @@ TARGET := $(TARGET)$(EXE_EXT)
 all: $(TARGET)
 
 $(TARGET): $(SRC)
-	$(CC) $(CFLAGS) -o $(TARGET) $(SRC)
+	$(CC) $(CFLAGS) -o $(TARGET) $(SRC) -lm
 
 clean:
 	$(RM) $(TARGET)
