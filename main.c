@@ -12,6 +12,7 @@ void display_csv(char ***data, int rows, int cols);
 void display_heatmap(char ***data, int rows, int cols);
 void free_csv(char ***data, int rows, int cols);
 void hsv_to_rgb(int h, int s, int v, int *r, int *g, int *b);
+int find_class_column(char ***data, int cols);
 
 // Function to count columns in a single line
 int count_columns(const char *line) {
@@ -127,6 +128,16 @@ void hsv_to_rgb(int h, int s, int v, int *r, int *g, int *b) {
     *b = (int)((bf + m) * 255);
 }
 
+// Function to find the index of the 'class' column (case-insensitive)
+int find_class_column(char ***data, int cols) {
+    for (int j = 0; j < cols; j++) {
+        if (strcasecmp(data[0][j], "class") == 0) { // Compare case-insensitively
+            return j;
+        }
+    }
+    return -1; // Return -1 if 'class' column is not found
+}
+
 // Function to display the heatmap
 void display_heatmap(char ***data, int rows, int cols) {
     printf("\nHeatmap View:\n");
@@ -139,6 +150,14 @@ void display_heatmap(char ***data, int rows, int cols) {
     }
     calculate_column_widths(data, rows, cols, col_widths);
 
+    // Find the 'class' column index
+    int class_col = find_class_column(data, cols);
+    if (class_col == -1) {
+        printf("Error: 'class' column not found.\n");
+        free(col_widths);
+        return;
+    }
+
     // Map unique class values to colors
     char **classes = malloc(rows * sizeof(char *));
     int class_count = 0;
@@ -146,13 +165,13 @@ void display_heatmap(char ***data, int rows, int cols) {
     for (int i = 1; i < rows; i++) { // Start at 1 to skip header
         int found = 0;
         for (int j = 0; j < class_count; j++) {
-            if (strcasecmp(classes[j], data[i][cols - 1]) == 0) {
+            if (strcasecmp(classes[j], data[i][class_col]) == 0) {
                 found = 1;
                 break;
             }
         }
         if (!found) {
-            classes[class_count] = data[i][cols - 1];
+            classes[class_count] = data[i][class_col];
             class_count++;
         }
     }
@@ -170,7 +189,8 @@ void display_heatmap(char ***data, int rows, int cols) {
 
     // Iterate over the rows and columns
     for (int i = 1; i < rows; i++) { // Skip the header row
-        for (int j = 0; j < cols - 1; j++) { // Skip the last column if it's non-numeric
+        for (int j = 0; j < cols; j++) {
+            if (j == class_col) continue; // Skip the class column for now
             double value = atof(data[i][j]); // Convert to a numeric value
             int intensity = (int)(value * 255 / 10); // Scale to 0-255 (assuming max value ~10)
             intensity = intensity > 255 ? 255 : (intensity < 0 ? 0 : intensity);
@@ -182,9 +202,9 @@ void display_heatmap(char ***data, int rows, int cols) {
 
         // Display class with color
         for (int j = 0; j < class_count; j++) {
-            if (strcasecmp(classes[j], data[i][cols - 1]) == 0) {
+            if (strcasecmp(classes[j], data[i][class_col]) == 0) {
                 printf("\033[38;2;%d;%d;%dm %-*s \033[0m", 
-                       class_colors[j][0], class_colors[j][1], class_colors[j][2], col_widths[cols - 1], data[i][cols - 1]);
+                       class_colors[j][0], class_colors[j][1], class_colors[j][2], col_widths[class_col], data[i][class_col]);
                 break;
             }
         }
