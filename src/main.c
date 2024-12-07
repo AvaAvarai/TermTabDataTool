@@ -3,6 +3,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <math.h>
+#include <dirent.h>
 
 // Function prototypes
 int count_columns(const char *line);
@@ -13,6 +14,29 @@ void display_heatmap(char ***data, int rows, int cols);
 void free_csv(char ***data, int rows, int cols);
 void hsv_to_rgb(int h, int s, int v, int *r, int *g, int *b);
 int find_class_column(char ***data, int cols);
+int list_csv_files(const char *folder, char files[][256], int max_files);
+
+// Function to list all CSV files in the "data" folder
+int list_csv_files(const char *folder, char files[][256], int max_files) {
+    DIR *dir = opendir(folder);
+    if (!dir) {
+        printf("Could not open directory: %s\n", folder);
+        return 0;
+    }
+
+    struct dirent *entry;
+    int count = 0;
+
+    while ((entry = readdir(dir)) != NULL && count < max_files) {
+        if (strstr(entry->d_name, ".csv")) { // Check if file ends with ".csv"
+            strncpy(files[count], entry->d_name, 256);
+            count++;
+        }
+    }
+
+    closedir(dir);
+    return count; // Return the number of CSV files found
+}
 
 // Function to count columns in a single line
 int count_columns(const char *line) {
@@ -262,35 +286,72 @@ void display_csv(char ***data, int rows, int cols) {
 
 // Main function
 int main() {
-    char filename[100];
+    char folder[] = "data"; // Directory containing CSV files
+    char files[100][256];   // Array to store up to 100 filenames
+    char filepath[300];     // Path to the currently loaded file
     int rows = 0, cols = 0;
     char ***data = NULL;
 
-    printf("Enter the filename to open: ");
-    scanf("%s", filename);
-
-    // Load CSV data
-    data = read_csv(filename, &rows, &cols);
-    if (data == NULL) {
-        return 1; // Exit if file could not be loaded
+    // Load available CSV files
+    int file_count = list_csv_files(folder, files, 100);
+    if (file_count == 0) {
+        printf("No CSV files found in the folder '%s'. Exiting...\n", folder);
+        return 1;
     }
 
-    // Main loop for user input
-    char choice;
+    char option;
     do {
+        // If no data is loaded, prompt user to select a file
+        if (data == NULL) {
+            printf("\nAvailable CSV files:\n");
+            for (int i = 0; i < file_count; i++) {
+                printf("[%d] %s\n", i + 1, files[i]);
+            }
+
+            int choice;
+            printf("Enter the number of the file to open: ");
+            scanf("%d", &choice);
+
+            if (choice < 1 || choice > file_count) {
+                printf("Invalid choice. Exiting...\n");
+                return 1;
+            }
+
+            // Construct the full file path
+            snprintf(filepath, sizeof(filepath), "%s/%s", folder, files[choice - 1]);
+
+            // Load CSV data
+            data = read_csv(filepath, &rows, &cols);
+            if (data == NULL) {
+                printf("Error loading the selected file. Returning to menu...\n");
+                continue;
+            }
+
+            printf("File '%s' successfully loaded.\n", files[choice - 1]);
+        }
+
+        // Display menu options
         printf("\nOptions:\n");
         printf("'d': Display Data\n");
         printf("'h': Heatmap View\n");
+        printf("'r': Reload Data\n");
         printf("'q': Quit\n");
         printf("Enter your choice: ");
-        scanf(" %c", &choice); // Read user input
+        scanf(" %c", &option);
 
-        switch (tolower(choice)) {
+        switch (tolower(option)) {
             case 'd':
                 display_csv(data, rows, cols);
                 break;
             case 'h':
                 display_heatmap(data, rows, cols);
+                break;
+            case 'r':
+                free_csv(data, rows, cols); // Free the previously loaded data
+                data = NULL;               // Reset data pointer
+                rows = 0;
+                cols = 0;
+                printf("Reloading data...\n");
                 break;
             case 'q':
                 printf("Exiting...\n");
@@ -299,10 +360,12 @@ int main() {
                 printf("Invalid option. Try again.\n");
                 break;
         }
-    } while (tolower(choice) != 'q');
+    } while (tolower(option) != 'q');
 
-    // Free memory
-    free_csv(data, rows, cols);
+    // Free memory if data is loaded
+    if (data != NULL) {
+        free_csv(data, rows, cols);
+    }
 
     return 0;
 }
