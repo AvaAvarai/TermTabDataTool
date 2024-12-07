@@ -162,6 +162,12 @@ void display_heatmap(char ***data, int rows, int cols) {
     char **classes = malloc(rows * sizeof(char *));
     int class_count = 0;
 
+    // print header for all columns
+    for (int j = 0; j < cols; j++) {
+        printf("%-*s ", col_widths[j] + 1, data[0][j]);
+    }
+    printf("\n");
+
     for (int i = 1; i < rows; i++) { // Start at 1 to skip header
         int found = 0;
         for (int j = 0; j < class_count; j++) {
