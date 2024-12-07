@@ -16,8 +16,22 @@ void hsv_to_rgb(int h, int s, int v, int *r, int *g, int *b);
 int find_class_column(char ***data, int cols);
 int list_csv_files(const char *folder, char files[][256], int max_files);
 double **calculate_min_max(char ***data, int rows, int cols, int class_col);
-void normalize_data(char ***data, int rows, int cols, int class_col);
+void normalize_data(char ***data, char ****original_data, int rows, int cols, int class_col);
+void denormalize_data(char ***data, char ***original_data, int rows, int cols);
 void print_data_summary(char ***data, int rows, int cols, int class_col);
+void free_original_data(char ***original_data, int rows, int cols);
+
+void free_original_data(char ***original_data, int rows, int cols) {
+    if (!original_data) return;
+
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < cols; j++) {
+            free(original_data[i][j]);
+        }
+        free(original_data[i]);
+    }
+    free(original_data);
+}
 
 void print_data_summary(char ***data, int rows, int cols, int class_col) {
     printf("\n=== Data Summary ===\n");
@@ -394,7 +408,35 @@ void display_csv(char ***data, int rows, int cols) {
     free(col_widths);
 }
 
-void normalize_data(char ***data, int rows, int cols, int class_col) {
+void denormalize_data(char ***data, char ***original_data, int rows, int cols) {
+    if (!original_data) {
+        printf("Error: Original data not backed up. Cannot denormalize.\n");
+        return;
+    }
+
+    // Restore data from backup
+    for (int i = 0; i < rows; i++) {
+        for (int j = 0; j < cols; j++) {
+            free(data[i][j]);
+            data[i][j] = strdup(original_data[i][j]);
+        }
+    }
+
+    printf("Data restored to original values.\n");
+}
+
+void normalize_data(char ***data, char ****original_data, int rows, int cols, int class_col) {
+    // Backup original data if not already backed up
+    if (!*original_data) {
+        *original_data = (char ***)malloc(rows * sizeof(char **));
+        for (int i = 0; i < rows; i++) {
+            (*original_data)[i] = (char **)malloc(cols * sizeof(char *));
+            for (int j = 0; j < cols; j++) {
+                (*original_data)[i][j] = strdup(data[i][j]);
+            }
+        }
+    }
+
     double **min_max = calculate_min_max(data, rows, cols, class_col);
     if (!min_max) {
         printf("Error: Unable to calculate min/max for normalization.\n");
@@ -452,6 +494,7 @@ int main() {
     char files[100][256];   // Array to store up to 100 filenames
     char filepath[300];     // Path to the currently loaded file
     int rows = 0, cols = 0;
+    char ***original_data = NULL; // Local backup pointer
     char ***data = NULL;
     int normalize = 0; // Flag to track normalization mode (0 = OFF, 1 = ON)
     int class_col = -1; // Store class column index
@@ -502,12 +545,6 @@ int main() {
 
             // Print data summary
             print_data_summary(data, rows, cols, class_col);
-
-            // Find class column
-            class_col = find_class_column(data, cols);
-            if (class_col == -1) {
-                printf("Warning: 'class' column not found. Proceeding without class-specific logic.\n");
-            }
         }
 
         // Display menu options
@@ -530,6 +567,8 @@ int main() {
                 break;
             }
             case 'r': {
+                free_original_data(original_data, rows, cols);
+                original_data = NULL;
                 free_csv(data, rows, cols);
                 data = NULL;
                 rows = cols = 0;
@@ -539,16 +578,17 @@ int main() {
             }
             case 'n': {
                 if (!data) {
-                    printf("No data loaded to normalize.\n");
+                    printf("No data loaded to normalize/denormalize.\n");
                     break;
                 }
 
                 normalize = !normalize; // Toggle normalization mode
                 if (normalize) {
                     printf("Normalizing data...\n");
-                    normalize_data(data, rows, cols, class_col);
+                    normalize_data(data, &original_data, rows, cols, class_col);
                 } else {
-                    printf("Normalization toggled OFF. Reload data to restore original values.\n");
+                    printf("Restoring original data...\n");
+                    denormalize_data(data, original_data, rows, cols);
                 }
                 break;
             }
@@ -565,6 +605,7 @@ int main() {
 
     // Free memory if data is loaded
     if (data != NULL) free_csv(data, rows, cols);
+    if (original_data) free_original_data(original_data, rows, cols);
 
     return 0;
 }
