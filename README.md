@@ -10,10 +10,10 @@ Terminal-based tabular (CSV) dataset tool written in C to experiment with handli
 ## Screenshot
 
 Default display:
-![WBC 30-D Default Display](wbc30_screenshot_display.png)
+![WBC 30-D Default Display](screenshots/wbc30_screenshot_display.png)
 
 Heatmap display:
-![WBC 30-D Heatmap Display](wbc30_screenshot_heatmap.png)
+![WBC 30-D Heatmap Display](screenshots/wbc30_screenshot_heatmap.png)
 
 ## License
 

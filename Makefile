@@ -1,7 +1,8 @@
 CC = gcc
 CFLAGS = -Wall -Wextra
 TARGET = main
-SRC = main.c
+SRC_DIR = src
+SRC = $(SRC_DIR)/main.c
 
 # Detect platform
 ifeq ($(OS),Windows_NT) # Windows
